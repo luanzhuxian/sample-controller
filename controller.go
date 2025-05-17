@@ -140,6 +140,24 @@ func NewController(
 	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
 
 	// 你的控制器核心逻辑只处理 Foo，但你通过监听 Deployment 的变化事件，可以反向查找 Foo 并触发 reconcile：
+	// 监听Deployment是为了实现双向协调机制，这样做有几个重要原因：
+	// 1. 所有权关系的维护：
+	// - 当Foo资源创建时，控制器会创建一个对应的Deployment
+	// - 这个Deployment通过OwnerReferences字段标记其所有者是Foo资源
+	// - 如果有人直接修改或删除了这个Deployment，控制器需要知道并进行响应
+	// 2. 防止资源漂移：
+	// - 如果有人在Kubernetes集群中直接修改了由Foo创建的Deployment（比如手动缩放副本数）
+	// - 控制器会检测到这种变化，并将Deployment恢复到Foo资源所期望的状态
+	// - 这确保了实际运行状态与Foo定义的期望状态一致
+	// 3. 处理删除场景：
+	// - 如果Deployment被意外删除，监听Deployment的删除事件可以触发控制器重新创建它
+	// - 如果查看handleObject方法，它会查找Deployment的所有者，然后将对应的Foo放入工作队列
+	// 4. 资源关联关系的闭环：
+	// - 这种双向监听形成了一个闭环：Foo变化→更新Deployment，Deployment变化→检查是否与Foo一致
+	// - 这是Kubernetes控制器常见的"reconciliation loop"（协调循环）模式
+	// 总结：查看handleObject方法可以看到：当Deployment变化时，它会检查Deployment是否有一个Foo类型的所有者，如果有，就将该Foo资源加入到工作队列中进行处理。
+	// 这是Kubernetes控制器的一个最佳实践 - 不仅监听你负责管理的主资源（Foo），还要监听由它创建的所有下游资源（Deployment），以确保整个系统的状态一致性。
+
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
