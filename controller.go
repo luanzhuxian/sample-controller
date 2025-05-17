@@ -30,8 +30,9 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
+
+	"k8s.io/client-go/kubernetes"        // 导入 Kubernetes 自定义客户端库
+	"k8s.io/client-go/kubernetes/scheme" // 导入 Kubernetes 原生资源的类型定义（Scheme 是所有资源类型的注册表）
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
@@ -137,6 +138,8 @@ func NewController(
 	// processing. This way, we don't need to implement custom logic for
 	// handling Deployment resources. More info on this pattern:
 	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
+
+	// 你的控制器核心逻辑只处理 Foo，但你通过监听 Deployment 的变化事件，可以反向查找 Foo 并触发 reconcile：
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
