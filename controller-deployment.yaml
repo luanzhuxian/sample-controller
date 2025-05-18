@@ -16,7 +16,8 @@ spec:
       serviceAccountName: sample-controller
       containers:
         - name: sample-controller
-          image: sample-controller:latest
+          # image: sample-controller:latest
+          image: luanzhuxian/sample-controller:latest
           imagePullPolicy: IfNotPresent
 ---
 apiVersion: v1
