@@ -68,25 +68,26 @@ const (
 
 // Controller is the controller implementation for Foo resources
 type Controller struct {
-	// kubeclientset is a standard kubernetes clientset
+	// kubeclientset is a standard kubernetes clientset // 标准k8s客户端工具
 	kubeclientset kubernetes.Interface
-	// sampleclientset is a clientset for our own API group
+	// sampleclientset is a clientset for our own API group // 自定义 API 组的 clientset
 	sampleclientset clientset.Interface
 
-	deploymentsLister appslisters.DeploymentLister
-	deploymentsSynced cache.InformerSynced
-	foosLister        listers.FooLister
-	foosSynced        cache.InformerSynced
+	deploymentsLister appslisters.DeploymentLister // Deployment列表对象
+	deploymentsSynced cache.InformerSynced // Deployment同步状态
+	foosLister        listers.FooLister // Foo列表对象
+	foosSynced        cache.InformerSynced // Foo同步状态
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
 	// means we can ensure we only process a fixed amount of resources at a
 	// time, and makes it easy to ensure we are never processing the same item
 	// simultaneously in two different workers.
-	workqueue workqueue.TypedRateLimitingInterface[cache.ObjectName]
-	// recorder is an event recorder for recording Event resources to the
-	// Kubernetes API.
-	recorder record.EventRecorder
+	workqueue workqueue.TypedRateLimitingInterface[cache.ObjectName]// 工作队列意味着每次只能处理一次事件
+	// recorder is an event recorder for recording Event resources to the Kubernetes API.
+	// 事件记录器, 用于记录事件资源到 Kubernetes API
+	// record 上报,处理及打印事件, 用 kubectl get events可以查看上报的事件. 
+	recorder record.EventRecorder 
 }
 
 // NewController returns a new sample controller
@@ -101,13 +102,13 @@ func NewController(
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
 	// logged for sample-controller types.
-	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
+	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme)) // 添加自定义资源组别到默认的 Kubernetes Scheme
 	logger.V(4).Info("Creating event broadcaster")
 
-	eventBroadcaster := record.NewBroadcaster(record.WithContext(ctx))
-	eventBroadcaster.StartStructuredLogging(0)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+	eventBroadcaster := record.NewBroadcaster(record.WithContext(ctx)) // 创建事件广播器
+	eventBroadcaster.StartStructuredLogging(0) // 记录到本地日志
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")}) // 上报 events 到 apiserver
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName}) // 创建 EventRecorder
 	ratelimiter := workqueue.NewTypedMaxOfRateLimiter(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[cache.ObjectName](5*time.Millisecond, 1000*time.Second),
 		&workqueue.TypedBucketRateLimiter[cache.ObjectName]{Limiter: rate.NewLimiter(rate.Limit(50), 300)},
@@ -125,6 +126,9 @@ func NewController(
 	}
 
 	logger.Info("Setting up event handlers")
+
+	// 对资源的创建/更新/删除绑定方法, 也就是实现逻辑的入口.
+
 	// Set up an event handler for when Foo resources change
 	fooInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueFoo,
@@ -191,6 +195,7 @@ func (c *Controller) Run(ctx context.Context, workers int) error {
 	// Wait for the caches to be synced before starting workers
 	logger.Info("Waiting for informer caches to sync")
 
+	// 等待完成同步
 	if ok := cache.WaitForCacheSync(ctx.Done(), c.deploymentsSynced, c.foosSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
@@ -216,6 +221,7 @@ func (c *Controller) runWorker(ctx context.Context) {
 	}
 }
 
+// 主要是执行 syncHandler 方法
 // processNextWorkItem will read a single work item off the workqueue and
 // attempt to process it, by calling the syncHandler.
 func (c *Controller) processNextWorkItem(ctx context.Context) bool {
@@ -239,6 +245,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	if err == nil {
 		// If no error occurs then we Forget this item so it does not
 		// get queued again until another change happens.
+		// 如果有错误则利用延时队列重新添加
 		c.workqueue.Forget(objRef)
 		logger.Info("Successfully synced", "objectName", objRef)
 		return true
@@ -256,6 +263,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 	return true
 }
 
+// 根据 Foo 对 deployment 进行操作, CRD 逻辑实现.
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Foo resource
 // with the current status of the resource.
@@ -263,6 +271,7 @@ func (c *Controller) syncHandler(ctx context.Context, objectRef cache.ObjectName
 	logger := klog.LoggerWithValues(klog.FromContext(ctx), "objectRef", objectRef)
 
 	// Get the Foo resource with this namespace/name
+	// Lister同步服务端的状态, 不用再跟服务端进行通信
 	foo, err := c.foosLister.Foos(objectRef.Namespace).Get(objectRef.Name)
 	if err != nil {
 		// The Foo resource may no longer exist, in which case we stop
@@ -284,6 +293,7 @@ func (c *Controller) syncHandler(ctx context.Context, objectRef cache.ObjectName
 		return nil
 	}
 
+	// 获取 deployment 类型, 如果没有找到, 则对服务端创建 deployment
 	// Get the deployment with the name specified in Foo.spec
 	deployment, err := c.deploymentsLister.Deployments(foo.Namespace).Get(deploymentName)
 	// If the resource doesn't exist, we'll create it
@@ -306,6 +316,7 @@ func (c *Controller) syncHandler(ctx context.Context, objectRef cache.ObjectName
 		return fmt.Errorf("%s", msg)
 	}
 
+	// 如果 foo 的 relicas 字段不等于 deployment 的 replicas 字段, 则修改 deployment 的 replicas 数量
 	// If this number of the replicas on the Foo resource is specified, and the
 	// number does not equal the current desired replicas on the Deployment, we
 	// should update the Deployment resource.

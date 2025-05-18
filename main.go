@@ -58,8 +58,9 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
+	// kubeClient是client-go下的客户端库, exampleClient是代码生成器创建的客户端。
 	// 这两个客户端都是用来和 Kubernetes API Server 进行 HTTP 通信的，区别在于它们操作的资源不同：
-	// 1. kubeClient 操作的是 Kubernetes 原生资源，比如 Deployment、Service、Pod 等。
+	// 1. kubeClient 操作的是 Kubernetes 原生资源，比如 Deployment、Service、Pod 等。除了自定义资源组别不能操作, 其它都能操作。
 	// 2. exampleClient 操作的是自定义资源，用来访问自定义的 CRD（CustomResourceDefinition），比如 Foo。
 
 	// 创建 Kubernetes 客户端
@@ -81,8 +82,10 @@ func main() {
 	}
 
 	// 创建 Kubernetes 的 InformerFactory，用于创建和管理 Informer。
+	// Informer 是核心组件, 作用是 watch 和 list k8s 资源, 然后将资源本地化, 减低对 apiServer 的压力。
+
 	// SharedInformerFactory 负责管理和复用各种资源的 informer，监听资源变化（比如 Deployment 变化）并缓存到本地。
-	// 这里的 kubeInformerFactory 是 Kubernetes 资源的 InformerFactory，用于创建和管理 Kubernetes 资源的 Informer。
+	// 这里的 kubeInformerFactory 是 Kubernetes 原生资源的 InformerFactory，用于创建和管理 Kubernetes 资源的 Informer。
 	// 这里的 exampleInformerFactory 是自定义资源的 InformerFactory，用于创建和管理自定义资源的 Informer。
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	exampleInformerFactory := informers.NewSharedInformerFactory(exampleClient, time.Second*30)
@@ -93,6 +96,7 @@ func main() {
 		kubeInformerFactory.Apps().V1().Deployments(),
 		exampleInformerFactory.Samplecontroller().V1alpha1().Foos())
 
+	// 启动全部已注册的 informers 及运行 controller.
 	// 启动 InformerFactory，它们内部会建立 Watch，实时监听资源变化。
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(ctx.done())
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
@@ -108,6 +112,7 @@ func main() {
 }
 
 // 初始化命令行参数，在程序启动时注册命令行参数，设置 --kubeconfig 和 --master。
+// init()接收两个命令行参数, kubeconfig和master两个都是用来连接k8s服务端.
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
